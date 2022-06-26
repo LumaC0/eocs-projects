@@ -1,0 +1,69 @@
+// This file is part of www.nand2tetris.org
+// and the book "The Elements of Computing Systems"
+// by Nisan and Schocken, MIT Press.
+// File name: projects/05/Memory.hdl
+
+/**
+ * The complete address space of the Hack computer's memory,
+ * including RAM and memory-mapped I/O. 
+ * The chip facilitates read and write operations, as follows:
+ *     Read:  out(t) = Memory[address(t)](t)
+ *     Write: if load(t-1) then Memory[address(t-1)](t) = in(t-1)
+ * In words: the chip always outputs the value stored at the memory 
+ * location specified by address. If load==1, the in value is loaded 
+ * into the memory location specified by address. This value becomes 
+ * available through the out output from the next time step onward.
+ * Address space rules:
+ * Only the upper 16K+8K+1 words of the Memory chip are used. 
+ * Access to address>0x6000 is invalid. Access to any address in 
+ * the range 0x4000-0x5FFF results in accessing the screen memory 
+ * map. Access to address 0x6000 results in accessing the keyboard 
+ * memory map. The behavior in these addresses is described in the 
+ * Screen and Keyboard chip specifications given in the book.
+ */
+
+CHIP Memory {
+    IN in[16], load, address[15];
+    OUT out[16];
+
+    PARTS:
+		
+		RAM16K(in=in, load=loadRAM, address=address[0..13], out=outRAM);
+		Screen(in=in, load=loadScreen, address=address[0..12], out=outScreen);
+		DMux(in=load, sel=address[14], a=loadRAM, b=loadScreen);
+	
+		Keyboard(out=outKB);
+
+		Or(a=address[0], b=address[1], out=evalA1);
+		Or(a=evalA1, b=address[2], out=evalA2);
+		Or(a=evalA2, b=address[3], out=evalA3);
+		Or(a=evalA3, b=address[4], out=evalA4);
+		Or(a=evalA4, b=address[5], out=evalA5);
+		Or(a=evalA5, b=address[6], out=evalA6);
+		Or(a=evalA6, b=address[7], out=evalA7);
+		Or(a=evalA7, b=address[8], out=evalA8);
+		Or(a=evalA8, b=address[9], out=evalA9);
+		Or(a=evalA9, b=address[10], out=evalA10);
+		Or(a=evalA10, b=address[11], out=evalA11);
+		Or(a=evalA11, b=address[12], out=evalA12);
+		Or(a=evalA12, b=address[13], out=evalA13);
+
+		// Keyboard address logic: 0b110000000000000
+		Not(in=evalA12, out=nevalA12);
+		And(a=address[13], b=address[14], out=evalKBtemp);
+		And(a=evalKBtemp, b=nevalA12, out=addressKB);
+
+		// RAM addresses 0b000000000000000 to 0b11111111111111 (14 1's)
+		// And(a=address[14], b=address[14], out=addressRAM);
+
+		// Screen addresses 0b100000000000000 0b101111111111111
+		// Not(in=address[13], out=naddress13);
+		// And(a=address[14], b=naddress13, out=addressScreen);
+
+		
+		// Address evaluation
+		Mux16(a=outRAM, b=outScreen, sel=address[14], out=out1);
+		Mux16(a=out1, b=outKB, sel=addressKB, out=out);
+
+
+}
