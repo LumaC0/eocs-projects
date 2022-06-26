@@ -1,2 +1,2 @@
-# eocs-projects
-# eocs-projects
+# Elements of Computing Systems
+### Project files
