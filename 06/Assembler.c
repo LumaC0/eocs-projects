@@ -4,7 +4,7 @@
 #include <stdlib.h>
 #include <math.h>
 
-void print_file(FILE *, FILE *);
+/** void print_file(FILE *, FILE *); */
 
 typedef struct {
 	char *name;
@@ -96,13 +96,18 @@ SYMBOLS builtins[] = {
 };
 
 
-void  _iter_(SYMBOLS *arr, size_t size) {
-	while (size--) {
-		printf("name is %s and val is %s\n", arr->name, arr->value);
-		arr++;
-	}
-}
+/** void  _iter_(SYMBOLS *arr) { */
+/**   size_t s = sizeof(arr); */
+/**   printf("the array has %i values\n", s); */
+	/** while (size--) { */
+	/**   printf("name is %s and val is %s\n", arr->name, arr->value); */
+	/**   arr++; */
+	/** } */
+/** } */
 
+
+/** TODO incorporate jmp lookup code */
+/** TODO incorporate symbol table */
 
 #define MAX_LINE 256
 
@@ -110,34 +115,93 @@ void  _iter_(SYMBOLS *arr, size_t size) {
 
 #define MAX_ADDR (int) pow(2, BIT_RANGE-1)
 
-int symbol(char *line, FILE *out) {
-	line = ++line;
+char *c_comp_dest(char *line, char *eq_pt) {
 
-	char *tmp = line;
-	char nstr[BIT_RANGE];
+	int comp_start = labs(line - eq_pt); 
+	char *comp_sym = line + comp_start + 1;
 
-	int val = atoi(line);
-	
-	int i = 0;
-	while (i < BIT_RANGE) {
-		/** adding '0' + int for type cast to char  */
-		nstr[i++]  =  (!!((val << i) & MAX_ADDR)) + '0';
-		
+	char *nstr = (char *) malloc(BIT_RANGE);
+
+	strcpy(nstr, "111");
+	/** finding comp code */
+	for (int i = 0; i < comp_size; i++) {
+
+		if (strcmp((comp+i)->name, comp_sym) == -13) {
+
+			strcat(nstr, (strchr(comp_sym, 'M') != NULL) ? "1": "0");
+			strcat(nstr, (comp+i)->value);
+			
+		}
+	}	
+	/** finding dest code */
+	*(line+comp_start) = '\0';
+	for (int i = 0; i < dest_size; i++) {
+		if (strcmp((dest+i)->name, line) == 0) {
+			strcat(nstr, (dest+i)->value);
+		}
 	}
-	nstr[i++] = '\n';
-	nstr[i] = '\0';
 
-	/** printf("%s", nstr); */
-	/** printf("%c", '\n'); */
+	/** add no jump */
+	strcat(nstr, "000\n\0");
+
+	return nstr;	
+}
+
+char *c_jump(char *line) {
+	;
+}
+	
+
+int c_instruction(char *line, FILE *out) {
+	char *nstr, *c;
+
+	if ((c = strchr(line, '=')) != NULL) {
+		nstr = c_comp_dest(line, c);
+
+	} 
+	/** else { */
+	/**   nstr = c_jump(line); */
+
+		/** coded_nstr = dst_comp(line); */
+	/** while ((c = *(_iter_nstr++)) != '\n') { */
+	/**   if */
+	/** } */
+
+	if (fputs(nstr, out) == EOF) {
+		printf("Error writing symbols to out file");
+		return -1;
+	}
+	/** printf("%s\n", nstr); */
+
+	return 0;
+}
+
+
+int symbol(char *line, FILE *out) {
+
+	char *tmp = line, nstr[BIT_RANGE];
+
+	if (isdigit(*++line)) {
+		int num;
+		num = atoi(line);
+
+		int i = 0;
+		while (i < BIT_RANGE) {
+			/** adding '0' + int for type cast to char  */
+			nstr[i++]  =  (!!((num << i) & MAX_ADDR)) + '0';
+			
+		}
+		nstr[i++] = '\n';
+		nstr[i] = '\0';
+	}
+
+	/** printf("%s\n", nstr); */
 	
 	if (fputs(nstr, out) == EOF) {
 		printf("Error writing symbols to out file");
 		return -1;
 	}
 
-	return 0;
-}
-int c_instruction(char *, FILE *) {
 	return 0;
 }
 
@@ -172,10 +236,16 @@ int parser(char *infile, char *outfile) {
 		INST_TYPE _type = NSTR_TYPE(c);
 
 		if (_type == A_NSTR || _type ==  L_NSTR) {
+
 			symbol(line, out);
-		} else {
+
+		} else if (_type == C_NSTR) {
+
 			c_instruction(line, out);
-		}
+
+		} else 
+
+			continue;
 	}
 
 	fclose(in);
@@ -199,7 +269,7 @@ int main(int argc, char *argv[]) {
 		printf("wrong number of arguments supplied.");
 		return -1;
 	}
-	printf("%s %s\n", infile, outfile);
+	/** printf("%s %s\n", infile, outfile); */
 	
 
 	if (parser(argv[1], outfile) == -1) {
@@ -207,6 +277,7 @@ int main(int argc, char *argv[]) {
 		return -1;
 		}
 
+	/** _iter_(comp); */
 	return 0;
 }
 
