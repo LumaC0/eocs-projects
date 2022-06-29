@@ -11,6 +11,7 @@ typedef struct {
   char *value;
 } SYMBOLS;
 
+/** {{{ jmp struct */
 size_t jmp_size = 8;
 SYMBOLS jmp[] = {
 	"null", "000",
@@ -22,7 +23,9 @@ SYMBOLS jmp[] = {
 	"JLE", "110",
 	"JMP", "111"
 };
+/** }}} */
 
+/** {{{ comp struct */
 size_t comp_size = 28;
 SYMBOLS comp[] = {
 	"0",   "101010",
@@ -54,8 +57,9 @@ SYMBOLS comp[] = {
 	"D|A", "010101",
 	"D|M", "010101",
 };
+/** }}} */
 
-
+/** {{{ dest struct */
 size_t dest_size = 8;	
 SYMBOLS dest[] = {
 	"null", "000",
@@ -67,7 +71,9 @@ SYMBOLS dest[] = {
 	"AD",   "110",
 	"ADM",  "111",
 };
+/* }}} */
 
+/** {{{ builtins struct */
 size_t builtins_size = 22;	
 SYMBOLS builtins[] = {
 		"R0", "0",
@@ -94,7 +100,7 @@ SYMBOLS builtins[] = {
 		"SCREEN", "16384",
 		"KBD", "24576"
 };
-
+/** }}} */
 
 /** void  _iter_(SYMBOLS *arr) { */
 /**   size_t s = sizeof(arr); */
@@ -140,15 +146,16 @@ char *c_comp_dest(char *line, char *eq_pt) {
 			strcat(nstr, (dest+i)->value);
 		}
 	}
-
 	/** add no jump */
 	strcat(nstr, "000\n\0");
 
 	return nstr;	
 }
+// }}} 
 
 char *c_jump(char *line) {
 	;
+	/** char *comp_delim = strchr( */
 }
 	
 
