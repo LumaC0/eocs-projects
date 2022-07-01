@@ -188,84 +188,92 @@ typedef enum { A_NSTR, C_NSTR, L_NSTR } INST_TYPE;
   ((c == '@') || (c == '(') ? (c == '@') ? (A_NSTR) : (L_NSTR) : (C_NSTR))
 
 int normalize(char *line) {
-	int c;
-	if ((c = *line) == '/' || c == '\0' || c == '\n' || c == '\r') {
-		return -1;
-	}
-	char *cr;
-	if ((cr = strchr(line, '\r')) != NULL) {
-		*(line + labs(line - cr)) = '\0';
-	}
-	return c;
+  int c;
+  if ((c = *line) == '/' || c == '\0' || c == '\n' || c == '\r') {
+    return -1;
+  }
+  char *cr;
+  if ((cr = strchr(line, '\r')) != NULL) {
+    *(line + labs(line - cr)) = '\0';
+  }
+  return c;
 }
 
 struct Counter {
-	int linenum;
-	int symbnum;
+  int linenum;
+  int symbnum;
 };
 
+/** {{{ build_symbol_table */
 int build_symbol_table(char *line, SYMBOLS *table, struct Counter *pos) {
-	++pos->linenum;
-	if (*line != '(') {
-		return 1;	
-	} else {
-	++pos->symbnum;
-		char *column = ++line;
-		while (*column != ')') {
-			++column;
-		}
-		*column = '\0';
-	}
-	char *name = (char *)malloc(strlen(line));
-	char *value = (char *)malloc(sizeof(char));
+  ++pos->linenum;
+  if (*line != '(') {
+    return 1;
+  } else {
+    ++pos->symbnum;
+    char *column = ++line;
+    while (*column != ')') {
+      ++column;
+    }
+    *column = '\0';
+  }
+  char *name = (char *)malloc(strlen(line));
+  char *value = (char *)malloc(sizeof(char));
 
-	name = line;
-	sprintf(value, "%d", pos->linenum);
+  name = line;
+  sprintf(value, "%d", pos->linenum);
 
-	(table+pos->symbnum)->name = name; 
-	(table+pos->symbnum)->value = value;
+  (table + pos->symbnum)->name = name;
+  (table + pos->symbnum)->value = value;
+  printf("%s\n", (table + pos->symbnum)->name);
 
-	printf("table looks like -> %s\n", (table+pos->symbnum)->value);
-	return 0;
+  return 0;
 }
+/** }}} */
 
+#define TABLE_SIZE 100
 
 /** {{{ parser */
 int parser(char *infile, char *outfile) {
   FILE *in, *in1, *out;
   in = fopen(infile, "r");
-	in1 = fopen(infile, "r");
+  in1 = fopen(infile, "r");
   out = fopen(outfile, "w");
 
   int c;
   char line[MAX_LINE];
-	/** cannot initialize a struct* with values like char * */
-	struct Counter pos = { 0, 0 };
+  /** cannot initialize a struct* with values like char * */
+  struct Counter pos = {0, 0};
+  int size_mult = 1;
+  SYMBOLS *table = (SYMBOLS *)malloc(TABLE_SIZE);
 
-	SYMBOLS *table = (SYMBOLS *)malloc(100);;
-	/** SYMBOLS *table; */
+  while (fgets(line, MAX_LINE, in) != NULL) {
+    if ((c = normalize(line)) == -1) {
+      continue;
+    }
+    build_symbol_table(line, table, &pos);
 
-	while (fgets(line, MAX_LINE, in) != NULL) {
-		if ((c = normalize(line)) == -1) {
-			continue;
-		}
-		build_symbol_table(line, table, &pos);
-	}
+    if (pos.symbnum == TABLE_SIZE * size_mult) {
+      if ((realloc(table, TABLE_SIZE * ++size_mult) == NULL)) {
+        printf("error reallocating space to symbol table");
+        return -1;
+      }
+    }
+  }
 
-	/** for (int i = 0; i < 100; i++) { */
-	/**   printf("%s\n", (table+i)->name); */
-	/**      */
-	/** } */
-
+  /** for (int i = 0; i < 100; i++) { */
+  /**   printf("%s\n", (table+i)->name); */
+  /**      */
+  /** } */
 
   while (fgets(line, MAX_LINE, in1) != NULL) {
-		if ((c = normalize(line)) == -1) {
-			continue;
-		}
+    if ((c = normalize(line)) == -1) {
+      continue;
+    }
 
     INST_TYPE _type = NSTR_TYPE(c);
 
-		continue;
+    continue;
 
     if (_type == A_NSTR || _type == L_NSTR) {
       symbol(line, out);
@@ -273,9 +281,9 @@ int parser(char *infile, char *outfile) {
       c_instruction(line, out);
     } else {
       continue;
-		}
+    }
   }
-	fclose(in);
+  fclose(in);
   fclose(in1);
   fclose(out);
   return 0;
