@@ -210,17 +210,22 @@ int build_symbol_table(char *line, SYMBOLS *table, struct Counter *pos) {
 		return 1;	
 	} else {
 	++pos->symbnum;
-	printf("symbol number -> %i\n", pos->symbnum);
 		char *column = ++line;
 		while (*column != ')') {
 			++column;
 		}
 		*column = '\0';
 	}
-	/** (table+*sn)->name = line; */
-	/** *(table+*sn)->value = *ln; */
-	/** printf("%s\n", (table+*sn)->name); */
-	printf("lineumber -> %i\n", pos->linenum);
+	char *name = (char *)malloc(strlen(line));
+	char *value = (char *)malloc(sizeof(char));
+
+	name = line;
+	sprintf(value, "%d", pos->linenum);
+
+	(table+pos->symbnum)->name = name; 
+	(table+pos->symbnum)->value = value;
+
+	printf("table looks like -> %s\n", (table+pos->symbnum)->value);
 	return 0;
 }
 
@@ -237,8 +242,8 @@ int parser(char *infile, char *outfile) {
 	/** cannot initialize a struct* with values like char * */
 	struct Counter pos = { 0, 0 };
 
-	/** SYMBOLS *table = (SYMBOLS *)malloc(sizeof(SYMBOLS) * 100);; */
-	SYMBOLS *table;
+	SYMBOLS *table = (SYMBOLS *)malloc(100);;
+	/** SYMBOLS *table; */
 
 	while (fgets(line, MAX_LINE, in) != NULL) {
 		if ((c = normalize(line)) == -1) {
