@@ -4,8 +4,8 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define  DEBUGs(var, msg) printf("%s : %s\n", var, msg) 
-#define  DEBUGc(var, msg) printf("%c : %s\n", var, msg) 
+#define DEBUGs(var, msg) printf("%s : %s\n", var, msg)
+#define DEBUGc(var, msg) printf("%c : %s\n", var, msg)
 
 typedef struct {
   char *name;
@@ -50,9 +50,6 @@ SYMBOLS builtinS[] = {
     "THAT", "4",  "SCREEN", "16384", "KBD", "24576"};
 /** }}} */
 
-/** TODO incorporate symbol table and account for label destinations*/
-/** This is where a first pass comes in */
-
 #define MAX_LINE 256
 #define BIT_RANGE 16
 #define COMP_RANGE 7
@@ -61,7 +58,18 @@ SYMBOLS builtinS[] = {
 
 #define MAX_ADDR (int)pow(2, BIT_RANGE - 1)
 
-/** {{{ comp, dest, and jmp func */
+const char *reverse_symbols(char *symbol) {
+  char *tmp = (char *)calloc(sizeof(char), 4);
+  char c;
+  int i, len;
+  for (i = 0, len = strlen(symbol) - 1; len >= 0; len--) {
+    if (isspace(c = *(symbol + len)) != 0) continue;
+    tmp[i++] = c;
+  }
+  return tmp;
+}
+
+/** {{{ comp, dest, and jmpz func */
 void comp(char *nstr, char *symbol) {
   for (int i = 0; i < comp_size; i++) {
     if (strcmp((comp_mcodes + i)->name, symbol) == 0) {
@@ -78,9 +86,12 @@ void dest(char *nstr, char *symbol) {
       strcat(nstr, (dest_mcodes + i)->value);
       break;
     }
+    if (strcmp((dest_mcodes + i)->name, reverse_symbols(symbol)) == 0) {
+      strcat(nstr, (dest_mcodes + i)->value);
+      break;
+    }
   }
 }
-
 
 void jmp(char *nstr, char *symbol) {
   for (int i = 0; i < jmp_size; i++) {
@@ -153,43 +164,40 @@ int c_instruction(char *line, char *nstr) {
 struct Counter {
   int linenum;
   int symbnum;
-	int addr;
+  int addr;
 };
 
 /** }}} */
 
 /** {{{ add_symbol */
-int add_symbol(char *k, int v, SYMBOLS *table, int *sn) {
-	/** symbol already in table */
-
-	for (int i = 0; i < *sn; i++) {
-		if(strcmp((table+i)->name, k) == 0) {
-			return i;
-		} 
-	}
+int add_symbol(char *k, int v, SYMBOLS *refv, int *sn) {
+  /** symbol already in refv */
+  for (int i = 0; i < *sn; i++) {
+    if (strcmp((refv + i)->name, k) == 0) {
+      return i;
+    }
+  }
   char *name = (char *)malloc(strlen(k));
   char *value = (char *)malloc(sizeof(char));
 
   sprintf(name, "%s", k);
   sprintf(value, "%i", v);
 
-  (table + *sn)->name = name;
-  (table + *sn)->value = value;
-	printf("%s\n", (table + *sn)->name);
-	printf("%s\n", value);
-  ++*sn;
+  (refv + *sn)->name = name;
+  (refv + *sn)->value = value;
 
-	return -1;
+  return -1;
 }
 /** }}} */
 
 /** {{{ build_symbol_tazable za*/
-int build_symbol_table(char *line, SYMBOLS *table, struct Counter *pos) {
-	/** get rid of parenthasis */
-	char *end = strchr(++line, ')');
-	*end = '\0';
+int build_symbol_table(char *line, SYMBOLS *refv, struct Counter *pos) {
+  /** get rid of parenthasis */
+  char *end = strchr(++line, ')');
+  *end = '\0';
 
-	add_symbol(line, pos->linenum, table, &pos->symbnum);
+  add_symbol(line, pos->linenum, refv, &pos->symbnum);
+  ++pos->symbnum;
 
   return 0;
 }
@@ -202,38 +210,39 @@ int symbol(char *line, char *nstr, SYMBOLS *refv, struct Counter *refp) {
 
   if (isdigit(*++line)) {
     tmp = line;
-	} else {
-		for (int i = 0; i < builtinS_size; i++) {
-			if(strcmp((builtinS+i)->name, line) == 0) {
-				tmp = (builtinS+i)->value;
-			}
-		}
-		if (tmp == NULL) {
-			int c;
-			if ((c = add_symbol(line, refp->addr++, refv, &refp->symbnum)) != -1) {
-				tmp = (refv+c)->value;
-				--refp->addr;
-			} else {
-				num = refp->addr;
-			}
-		}
-	}
-	if (num == -1)
-		num = atoi(tmp);
+  } else {
+    for (int i = 0; i < builtinS_size; i++) {
+      if (strcmp((builtinS + i)->name, line) == 0) {
+        tmp = (builtinS + i)->value;
+      }
+    }
+    if (tmp == NULL) {
+      int c;
+      if ((c = add_symbol(line, ++refp->addr, refv, &refp->symbnum)) != -1) {
+        tmp = (refv + c)->value;
+        --refp->addr;
+      } else {
+        ++refp->symbnum;
+        num = refp->addr;
+      }
+    }
+  }
+  if (num == -1) num = atoi(tmp);
 
-	int i = 0;
-	while (i < BIT_RANGE) {
-		/** adding '0' + int for type cast to char  */
-		*(nstr+i) = (!!((num << i) & MAX_ADDR)) + '0';
-		i++;
-	}
-	*(nstr+i++) = '\n';
-	*(nstr+i) = '\0';
+  int i = 0;
+  while (i < BIT_RANGE) {
+    /** adding '0' + int for type cast to char  */
+    *(nstr + i) = (!!((num << i) & MAX_ADDR)) + '0';
+    i++;
+  }
+  *(nstr + i++) = '\n';
+  *(nstr + i) = '\0';
   return 0;
 }
 /** }}} */
 
-#define ELIMINATE_WHITESPACE while (*line == 32) line++
+#define ELIMINATE_WHITESPACE \
+  while (*line == 32) line++
 
 /** {{{ normalize */
 int normalize(char *line) {
@@ -241,8 +250,8 @@ int normalize(char *line) {
   if ((c = *line) == '/' || c == '\0' || c == '\n' || c == '\r') {
     return -1;
   }
-	
-	/** ELIMINATE_WHITESPACE; */
+
+  /** ELIMINATE_WHITESPACE; */
 
   char *cr;
   if ((cr = strchr(line, 32)) != NULL) {
@@ -250,7 +259,7 @@ int normalize(char *line) {
   } else if ((cr = strchr(line, '\r')) != NULL) {
     *(line + labs(line - cr)) = '\0';
   }
-	c = *line;
+  c = *line;
   return c;
 }
 /** }}} */
@@ -259,9 +268,7 @@ typedef enum { A_NSTR, C_NSTR, L_NSTR } INST_TYPE;
 
 #define TABLE_SIZE 100
 #define NSTR_TYPE(c) \
-  ((c == '@') || (c == '(') \
-	 ? (c == '@') ? (A_NSTR) : (L_NSTR) \
-	 : (C_NSTR))
+  ((c == '@') || (c == '(') ? (c == '@') ? (A_NSTR) : (L_NSTR) : (C_NSTR))
 
 /** {{{ parser */
 int parser(char *infile, char *outfile) {
@@ -275,63 +282,51 @@ int parser(char *infile, char *outfile) {
 
   int size_mult = 1;
 
-  SYMBOLS *refs = (SYMBOLS *)malloc(TABLE_SIZE);
+  /** SYMBOLS *refv = (SYMBOLS *)malloc(TABLE_SIZE); */
+  SYMBOLS refv[TABLE_SIZE];
   struct Counter refp = {0, 0, 15};
 
-	/** FIRST PASS */
+  /** FIRST PASS */
   while (fgets(ll, MAX_LINE, in) != NULL) {
-		char *line = ll;
-		ELIMINATE_WHITESPACE;
+    char *line = ll;
+    ELIMINATE_WHITESPACE;
     if ((c = normalize(line)) == -1) {
       continue;
     }
-		if (NSTR_TYPE(c) == L_NSTR) {
-			build_symbol_table(line, refs, &refp);
-			continue;
-		} else {
-			refp.linenum++;
-		}
-		if (refp.symbnum == TABLE_SIZE * size_mult) {
-			if ((realloc(refs, TABLE_SIZE * ++size_mult) == NULL)) {
-				printf("error reallocating space to symbol table");
-				return -1;
-			}
-		}
+    if (NSTR_TYPE(c) == L_NSTR) {
+      build_symbol_table(line, refv, &refp);
+      continue;
+    } else {
+      refp.linenum++;
+    }
   }
 
-	/** SECOND PASS */
+  /** SECOND PASS */
   while (fgets(ll, MAX_LINE, in1) != NULL) {
-		char *line = ll;
-		char *nstr = (char *)malloc(BIT_RANGE);
-		
-		ELIMINATE_WHITESPACE;
+    char *line = ll;
+    char *nstr = (char *)malloc(BIT_RANGE + 1);
+
+    ELIMINATE_WHITESPACE;
 
     if ((c = normalize(line)) == -1) {
       continue;
     }
     INST_TYPE _type = NSTR_TYPE(c);
     if (_type == A_NSTR) {
-			symbol(line, nstr, refs, &refp);
+      symbol(line, nstr, refv, &refp);
     } else if (_type == C_NSTR) {
-			c_instruction(line, nstr);
+      c_instruction(line, nstr);
     } else {
       continue;
     }
 
-		if (fputs(nstr, out) == EOF) {
-			free(nstr);
-			printf("Error writing symbols to out file");
-			return -1;
-		}
-		free(nstr);
+    if (fputs(nstr, out) == EOF) {
+      free(nstr);
+      printf("Error writing symbols to out file");
+      return -1;
+    }
+    free(nstr);
   }
-
-	while (refs) {
-		printf("%s\n", (refs)->name);
-		if ((refs)->name == NULL) break;
-		refs++;
-	}
-
 
   fclose(in);
   fclose(in1);
