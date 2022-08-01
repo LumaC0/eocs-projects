@@ -11,7 +11,7 @@ typedef struct {
   char *name;
   char *value;
 } SYMBOLS;
-
+will this work i do not know
 /** {{{ jmp struct */
 size_t jmp_size = 8;
 SYMBOLS jmp_mcodes[] = {"null", "000", "JGT", "001", "JEQ", "010",
