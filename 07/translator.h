@@ -38,6 +38,7 @@ struct op_code {
 	char *vm_code;
 	enum OPS op;
 };
+
 struct op_code op_codes[] = {
 	"push", C_PUSH,
 	"pop", C_POP,
@@ -48,7 +49,7 @@ struct op_code op_codes[] = {
 /* how many op codes */
 #define HM_OP_CODES (sizeof op_codes/sizeof(struct op_code))
 
-const char *operation(char *op);								/* finds type of current commnad */
+const int operation(char *op);								/* finds type of current commnad */
 // const char command_type(const char* arg);		 [> returns constant representing the type of command <]
 // struct m_segment *addr_to_mem(int addr);			 [> translates memory address to segment name <]
 int parse(char *vm_nstr, FILE *outfile);				/* Entrypoint for instruction translation */

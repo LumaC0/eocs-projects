@@ -11,38 +11,38 @@
 
 /** TODO match command type */
 /** TODO determine arg1 and arg2 from command type */
-const char *command_type(char *op)
+const int operation(char *vm_op)
 {
         const char *c_op;
-        return "nothing";
-}
-
-/*{{{split_string(char **str_lst, char *vm_nstr)*/
-int split_string(char **str_lst, char *vm_nstr)
-{
-        char *t_nstr = vm_nstr;
-        char *tmp_str;
-        char c;
-        int l_inc = 0, t_inc = 0;
-
-        while (1) {
-                c = *(t_nstr+t_inc);
-                if (c == 32) {
-                        tmp_str = (char*)malloc(sizeof(char)*16);
-                        strncpy(tmp_str, t_nstr, t_inc);
-                        *(str_lst+l_inc++) = tmp_str;
-                        t_nstr+=t_inc;
-                        t_nstr++;
-                        t_inc = 0;
-               }
-                if (c == 0) {
-                        tmp_str = (char*)malloc(sizeof(char)*16);
-                        strncpy(tmp_str, t_nstr, --t_inc);
-                        *(str_lst+l_inc) = tmp_str;
+        int i, j;
+        for (i = 0; i < HM_OP_CODES; i++) {
+                if (!strcmp((op_codes+i)->vm_code, vm_op)) {
+                        j = (op_codes+i)->op;
                         break;
                 }
-                t_inc++;
+                j = ERROR;
         }
+
+        return j;
+}
+
+/*{{{tokenize(char **str_lst, char *vm_nstr)*/
+int tokenize(char **str_lst, char *vm_nstr)
+{
+        char *t_nstr = vm_nstr;
+        int l_inc = 0, t_inc = 0;
+        /** = malloc(sizeof(uintptr_t)*3) */
+        char *tmp;
+        tmp = strtok(t_nstr, " ");
+        const int command = operation(tmp);
+        printf("%s ", command);
+
+        while (tmp) {
+                /** tmp = (char*)malloc(sizeof(char)*8); */
+                printf("%s\n", tmp);
+                tmp = strtok(NULL, " ");
+        }
+
         return 0;
 }
 /*}}}*/
@@ -54,11 +54,9 @@ int parse(char *vm_nstr, FILE *outfile)
         if ((c = *vm_nstr) == '/' || c == '\0' || c == '\n' || c == '\r')
                 return 0;
 
-        char **str_lst = malloc(sizeof(uintptr_t)*3);
-        split_string(str_lst, vm_nstr);
+        char **str_lst;
+        tokenize(str_lst, vm_nstr);
 
-        const char *command;
-        command = command_type(*(str_lst++));
         return 0;
 }
 /*}}}*/
