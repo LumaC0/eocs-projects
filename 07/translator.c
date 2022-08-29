@@ -9,8 +9,15 @@
 #include <inttypes.h>
 #endif
 
-/** TODO match command type */
-/** TODO determine arg1 and arg2 from command type */
+/**
+* TODO implement writepp and writea.
+* actual arithmetic is not neccessary
+**/
+int writepp(FILE *outfile, char *arg1, char *arg2)
+{
+
+}
+
 const int operation(char *vm_op)
 {
         const char *c_op;
@@ -27,7 +34,7 @@ const int operation(char *vm_op)
 }
 
 /*{{{tokenize(char **str_lst, char *vm_nstr)*/
-int tokenize(char **str_lst, char *vm_nstr)
+int tokenize(FILE *outfile, char *vm_nstr)
 {
         char *t_nstr = vm_nstr;
         int l_inc = 0, t_inc = 0;
@@ -35,14 +42,17 @@ int tokenize(char **str_lst, char *vm_nstr)
         char *tmp;
         tmp = strtok(t_nstr, " ");
         const int command = operation(tmp);
-        printf("%s ", command);
-
-        while (tmp) {
-                /** tmp = (char*)malloc(sizeof(char)*8); */
-                printf("%s\n", tmp);
-                tmp = strtok(NULL, " ");
+        if (command == 0)
+                ;
+        else {
+                char *arg1 = strtok(NULL, " ");
+                char *arg2 = strtok(NULL, " ");
+                printf("%s   %s\n", arg1, arg2);
+                writepp(outfile, arg1, arg2);
+                /** while (tmp) { */
+                /**         tmp = strtok(NULL, " "); */
+                /** } */
         }
-
         return 0;
 }
 /*}}}*/
@@ -53,9 +63,14 @@ int parse(char *vm_nstr, FILE *outfile)
         int c;
         if ((c = *vm_nstr) == '/' || c == '\0' || c == '\n' || c == '\r')
                 return 0;
+        char *n;
+        if ((n = strchr(vm_nstr, 0x0A)))
+                *n = 0;
+        if ((n = strchr(vm_nstr, 0x0D)))
+                *n = 0;
 
         char **str_lst;
-        tokenize(str_lst, vm_nstr);
+        tokenize(outfile, vm_nstr);
 
         return 0;
 }

@@ -2,15 +2,36 @@
 
 typedef int16_t DATA;				/* Signed 16-bit int is the only hack datatype */
 
+
 struct m_segment {
-	DATA **memory;            /* Pointer to array of pointers representing value stack */
-	// const int16_t addr;       [> address in RAM, i.e. 0 - 15 <]
-	const int16_t base;				/* Base address of segment and address of first value  */
-	// const int16_t upper;      [> Upper limit of possible values in stack <]
+	DATA memory[64];
+	// const int16_t addr;    /* address in RAM, i.e. 0 - 15 */
+	// const int16_t base;		/* Base address of segment and address of first value  */
+	// const int16_t upper;		/*  Upper limit of possible values in stack */
 	int16_t ith;              /* Ith element of value in stack */
 };
 
-struct m_segment SP, LCL, ARG, THIS, THAT;
+enum RAM_SEG {
+	SP,
+	LCL,
+	ARG,
+	THIS,
+	THAT,
+} RAM;
+
+struct m_segment ram[sizeof(RAM)] = {
+	0, 0,
+	0, 0,
+	0, 0,
+	0, 0,
+	0, 0,
+};
+
+/**
+ * TODO map memory segment string to symbol string to enum
+ * in a struct. I just realized no arithmetic actually has to be done.
+ * writing the correct asm is the next step.
+ **/
 
 #define MAX_LINE_LENGTH 100		/* Max length of read for fgets */
 #define ERROR -1              /* Return value when error is encountered */
@@ -35,15 +56,16 @@ enum OPS {
 };
 
 struct op_code {
-	char *vm_code;
-	enum OPS op;
+	char *vm_code;	// plain text command as realized while parsing
+	enum OPS op;		// enum version to be used in switch
+	int has_arg2;		// Does a second argument exist
 };
 
 struct op_code op_codes[] = {
-	"push", C_PUSH,
-	"pop", C_POP,
-	"add", C_ARITHMETIC,
-	"sub", C_ARITHMETIC
+	"push", C_PUSH, 1,
+	"pop", C_POP, 1,
+	"add", C_ARITHMETIC, 0,
+	"sub", C_ARITHMETIC, 0,
 };
 
 /* how many op codes */
@@ -53,5 +75,6 @@ const int operation(char *op);								/* finds type of current commnad */
 // const char command_type(const char* arg);		 [> returns constant representing the type of command <]
 // struct m_segment *addr_to_mem(int addr);			 [> translates memory address to segment name <]
 int parse(char *vm_nstr, FILE *outfile);				/* Entrypoint for instruction translation */
-int split_string(char **str_lst, char *vm_nstr);/* utility to split string into list of strings */
+int tokenize(FILE *outfile, char *vm_nstr);					/* seperates string into tokens to call operations */
+int writepp(FILE *outfile, char *arg1, char *arg2); /* write push pop commands to output */
 
