@@ -1,125 +1,241 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <errno.h>
 
-#include "translator.h"
+enum command_type {
+    C_ARITHMETIC,
+    C_PUSH,
+    C_POP,
+    C_LABEL,
+    C_GOTO,
+    C_IF,
+    C_FUNCTION,
+    C_RETURN,
+    C_CALL
+};
 
-#ifndef INTPTR_MAX
-#include <inttypes.h>
-#endif
+struct file {
+    char *fn;           // input filename
+    char *bn;           // input file basename
+    FILE *fp;           // input file pointer
+    char *ofn;          // output file name
+    FILE *ofp;          // output file pointer 
+};
 
-/**
-* TODO implement writepp and writea.
-* actual arithmetic is not neccessary
-**/
-int writepp(FILE *outfile, char *arg1, char *arg2)
-{
+struct tok {
+    char *buf;                  // full line read from file
+    char *cur;                  // current token
+    char *memseg;               // memory segment
+    int ind;                    // current index being read
+    enum command_type *command; // type of command
+    struct file *file;          // input file
+};
+
+int close_file(struct file *);
+
+int free_tok(struct tok *, int);
+
+#define DO_NOT_CLOSE_FILE 0
+
+#define CLOSE_FILE 1
+
+#define MAX_LINE 256
+
+#define is_filename_start_valid(c) (\
+            (c >= 'A' && c <= 'Z'))
+
+#define is_line_comment_or_empty(c) (\
+            (c == '/' || c == '\n' || c == '\r'))
+
+#define is_character_alphanumeric(c) (\
+            (c >= '!' && c <= '~'))
+
+int fname_check(char *fname) {
+    if (!is_filename_start_valid(fname[0])) return -1;
+    if (strcmp(".vm", fname+strlen(fname)-3) != 0) return -1; 
+    return 0;
+}
+
+char *determine_memseg(struct tok *tok) {
+    size_t buf_size = strlen(tok->buf)+1;
+    char *word = calloc(buf_size + 1, sizeof(char));
+    int i = 0;
+
+    for (;;) {
+        if (!is_character_alphanumeric(tok->buf[tok->ind])) {
+            ++tok->ind;
+            continue;
+        }
+        break;
+    }
+    for(;;) {
+        if (!is_character_alphanumeric(tok->buf[tok->ind])) {
+            break;
+        }
+        word[i++] = tok->buf[tok->ind++];
+    }
+    free(tok->cur);
+    tok->cur = word;
+
+    if (strcmp("constant", tok->cur)) {
+        tok->memseg = NULL;
+    }
+    else if (strcmp("local", tok->cur)) {
+        char *memseg = calloc(5, sizeof(char));
+        strcpy(memseg, "@LCL");
+        tok->memseg = memseg;
+    }
+    else if (strcmp("argument", tok->cur)) {
+        char *memseg = calloc(5, sizeof(char));
+        strcpy(memseg, "@ARG");
+        tok->memseg = memseg;
+    }
+    else if (strcmp("this", tok->cur)) {
+        char *memseg = calloc(6, sizeof(char));
+        strcpy(memseg, "@THIS");
+        tok->memseg = memseg;
+    }
+    else if (strcmp("that", tok->cur)) {
+        char *memseg = calloc(6, sizeof(char));
+        strcpy(memseg, "@THAT");
+        tok->memseg = memseg;
+    }
+    else if (strcmp("static", tok->cur)) {
+        char *memseg = calloc(strlen(tok->file->bn)+2, sizeof(char));
+        strcpy(memseg, strcat("@", tok->file->bn));
+        tok->memseg = memseg;
+    }
+    printf("%s\n", tok->memseg);
+}
+
+void determine_command_type(struct tok *tok) {
+    size_t buf_size = strlen(tok->buf)+1;
+    char *word = calloc(buf_size + 1, sizeof(char));
+    int i;
+    for (i = 0; i <= (int) buf_size +1; i++) {
+        if (!is_character_alphanumeric(tok->buf[i])) {
+            tok->ind = i;
+            break;
+        }
+        tok->ind = i;
+        word[i] = tok->buf[i];
+    }
+    word[++i] = '\0';
+    tok->cur = word;
+
+    enum command_type t;
+    char *memseg;
+    if (strcmp(tok->cur, "push") == 0) {
+        t = C_PUSH;
+        memseg = determine_memseg(tok);
+    } 
+    else if (strcmp(tok->cur, "pop") == 0) {
+        t = C_POP;
+        memseg = determine_memseg(tok);
+    }
+    else if (strcmp(tok->cur, "add") == 0) {
+        t = C_ARITHMETIC;
+        memseg = NULL;
+    }
+    else if (strcmp(tok->cur, "sub") == 0) {
+        t = C_ARITHMETIC;
+        memseg = NULL;
+    }
+    else {
+        fprintf(stderr, "token \"%s\" not recognized\n", tok->cur);
+        free_tok(tok, CLOSE_FILE);
+    }
+    tok->command = &t;
+    tok->memseg = memseg;
+}
+
+void code_writer(struct tok *tok) {
+    // if (tok->command == C_
+    printf("inside code writer\n");
 
 }
 
-const int operation(char *vm_op)
-{
-        const char *c_op;
-        int i, j;
-        for (i = 0; i < HM_OP_CODES; i++) {
-                if (!strcmp((op_codes+i)->vm_code, vm_op)) {
-                        j = (op_codes+i)->op;
-                        break;
-                }
-                j = ERROR;
-        }
+int read_lines(struct file *file) {
+    char line[MAX_LINE];
+    struct tok *new_tok = malloc(sizeof *new_tok);
+    new_tok->file = file;
+    while (fgets(line, MAX_LINE, new_tok->file->fp) != NULL) {
+        if (is_line_comment_or_empty(line[0]))
+            continue;
+        new_tok->buf = (char *) &line;
+        determine_command_type(new_tok);
+        code_writer(new_tok);
+    }
 
-        return j;
+    return 0;
 }
 
-/*{{{tokenize(char **str_lst, char *vm_nstr)*/
-int tokenize(FILE *outfile, char *vm_nstr)
-{
-        char *t_nstr = vm_nstr;
-        int l_inc = 0, t_inc = 0;
-        /** = malloc(sizeof(uintptr_t)*3) */
-        char *tmp;
-        tmp = strtok(t_nstr, " ");
-        const int command = operation(tmp);
-        if (command == 0)
-                ;
-        else {
-                char *arg1 = strtok(NULL, " ");
-                char *arg2 = strtok(NULL, " ");
-                printf("%s   %s\n", arg1, arg2);
-                writepp(outfile, arg1, arg2);
-                /** while (tmp) { */
-                /**         tmp = strtok(NULL, " "); */
-                /** } */
-        }
-        return 0;
+struct file *open_file(char *fname) {
+    char *fn, *bn, *ofn;
+    FILE *fp, *ofp;
+    struct file *file;
+
+    file = malloc(sizeof *file);
+    fn = calloc(strlen(fname)+1, sizeof(char));
+    bn = calloc(strlen(fname)+1, sizeof(char));
+    ofn = calloc(strlen(fname)+1, sizeof(char));
+
+    strcpy(fn, fname);
+    strcpy(bn, fname);
+    bn[strlen(bn)-3] = '\0';
+    file->fn = fn;
+    file->bn = bn;
+
+    if ((fp = fopen(file->fn, "r")) == NULL) {
+        fprintf(stderr, "%s does not exist\n", file->fn);
+        close_file(file);
+
+    }
+    strcpy(ofn, file->bn);
+    strcat(ofn, ".ast");
+    file->ofn = ofn;
+    ofp = fopen(file->ofn, "w");
+    file->ofp = ofp;
+    return file;
 }
-/*}}}*/
 
-/*{{{parse(char *vm_nstr, FILE *outfile)*/
-int parse(char *vm_nstr, FILE *outfile)
-{
-        int c;
-        if ((c = *vm_nstr) == '/' || c == '\0' || c == '\n' || c == '\r')
-                return 0;
-        char *n;
-        if ((n = strchr(vm_nstr, 0x0A)))
-                *n = 0;
-        if ((n = strchr(vm_nstr, 0x0D)))
-                *n = 0;
 
-        char **str_lst;
-        tokenize(outfile, vm_nstr);
+int main(int argc, char *argv[]) {
+    struct file *file;
+    // check that filename matches guidelines
+    if (argc != 2) exit(1);
+    if (fname_check(argv[1]) == -1) exit(1);
+    // build file struct to be passed around
 
-        return 0;
+    file = open_file(argv[1]);
+    int result = read_lines(file);
+
+    if (result == -1) {
+        fprintf(stderr, "%s\n", "error in translation");
+        close_file(file);
+    }
+    close_file(file);
+    return 0;
 }
-/*}}}*/
 
-/*{{{main*/
-/** translates VM code into hack assembly code */
-int main(int argc, char *argv[])
-{
-	char *in, *out;
+int free_tok(struct tok *tok, int closef) {
+    if (closef == CLOSE_FILE) {
+        close_file(tok->file);
+    }
+    if (tok->cur != NULL)
+        free(tok->cur);
+    if (tok->buf != NULL)
+        free(tok->buf);
+    if (tok->command != NULL)
+        free(tok->command);
+    free(tok);
+    exit(1);
 
-        if (argc == 1) {
-                printf("Must specify an input file name with .vm extention.\n");
-                return ERROR;
-        }
-        if (strstr(*(argv+1), ".vm" ) == NULL) {
-                printf("Must specify an input file name with .vm extention.\n");
-                return ERROR;
-        }
-
-	in = *(argv+1);
-        out = "out.asm";
-
-	while (--argc)
-		if (strcmp(*(argv+argc), "-o") == 0) {
-                        if (strstr(*(argv+argc+1), ".asm" ) != NULL) {
-                                out = *(argv+argc+1);
-                        } else {
-                                printf("output file must have .asm extention.\n");
-                                return ERROR;
-                        }
-                }
-
-        FILE *infile, *outfile;
-        char vm_nstr[MAX_LINE_LENGTH];
-
-        if ((infile = fopen(in, "r")) == NULL) {
-                printf("Error occured reading input file");
-                return ERROR;
-        }
-
-        if ((outfile = fopen(out, "w")) == NULL) {
-                printf("Error occured opening output file");
-                return ERROR;
-        }
-
-        while (fgets(vm_nstr, MAX_LINE_LENGTH, infile) != NULL)
-                parse(vm_nstr, outfile);
-
-        return 0;
 }
-/*}}}*/
+int close_file(struct file *file) {
+    if (file->fp != NULL)
+       fclose(file->fp);
+    free(file->fn);
+    free(file);
+    exit(0);
+}
