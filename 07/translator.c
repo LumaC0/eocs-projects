@@ -27,6 +27,7 @@ struct tok {
     char *cur;                  // current token
     char *memseg;               // memory segment
     char *ind;                  // index (third argument) of push/pop
+    int con;                    // set to 1 if memseg is a constant
     int line_ind;               // index of character being read
     enum command_type command;  // type of command
     struct file *file;          // input file
@@ -106,6 +107,7 @@ void determine_memseg(struct tok *tok) {
         char *memseg = calloc(5, sizeof(char));
         strcpy(memseg, "@");
         strcat(memseg, tok->ind);
+        tok->con = 1;
         tok->memseg = memseg;
     }
     else if (strcmp("local", tok->cur) == 0) {
@@ -185,9 +187,11 @@ void determine_command_type(struct tok *tok) {
     tok->command = t;
 }
 
-#define CONST_ACCESS %s\nD=A\n
+#define CONST_ACCESS(file, seg) (\
+            fprintf(file, "%s\nD=A\n", seg))
 
-#define SEG_ACCESS "$s\nA=M+%s\n"
+#define SEG_ACCESS(file, seg, ind) (\
+            fprintf(file, "%s\nA=M+%s\nD=M\n", seg, ind))
 
 #define INCR_STACK "@SP\nM=M+1\n"
 
@@ -196,8 +200,8 @@ void determine_command_type(struct tok *tok) {
 #define WRITE_ASM_ARITHMETIC(file, sign) (\
             fprintf(file, "@SP\nM=M-1\nA=M\nD=M\n@SP\nM=M-1\nA=M\nM=M%cD\n%s", sign, INCR_STACK))
 
-#define WRITE_ASM_PUSH(file, seg, ind) (\
-            fprintf(file, "%s\nA=M+%s\nD=M\n@SP\nA=M\nM=D\n%s", seg, ind, INCR_STACK)) 
+#define WRITE_ASM_PUSH(file) (\
+            fprintf(file, "@SP\nA=M\nM=D\n%s", INCR_STACK)) 
 
 #define WRITE_ASM_POP(file, seg, ind) (\
             fprintf(file,"@SP\nM=M-1\nA=M\nD=M\n%s\nA=M+%s\nM=D\n", seg, ind))
@@ -211,7 +215,10 @@ void code_writer(struct tok *tok) {
             break;
 
         case C_PUSH:
-            WRITE_ASM_PUSH(ofp, tok->memseg, tok->ind);
+            tok->con == 1
+                ? CONST_ACCESS(ofp, tok->memseg)
+                : SEG_ACCESS(ofp, tok->memseg, tok->ind);
+            WRITE_ASM_PUSH(ofp);
             break;
 
         case C_POP:
