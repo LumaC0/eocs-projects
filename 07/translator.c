@@ -28,7 +28,7 @@ struct tok {
     char *memseg;               // memory segment
     char *ind;                  // index (third argument) of push/pop
     int line_ind;               // index of character being read
-    enum command_type *command; // type of command
+    enum command_type command;  // type of command
     struct file *file;          // input file
 };
 
@@ -101,7 +101,6 @@ void determine_memseg(struct tok *tok) {
     free(tok->cur);
     tok->cur = word;
 
-    int c;
     if (strcmp("constant", tok->cur) == 0) {
         determine_memseg_index(tok);
         char *memseg = calloc(5, sizeof(char));
@@ -183,7 +182,7 @@ void determine_command_type(struct tok *tok) {
         fprintf(stderr, "token \"%s\" not recognized\n", tok->cur);
         free_tok(tok, CLOSE_FILE);
     }
-    tok->command = &t;
+    tok->command = t;
 }
 
 #define WRITE_ASM_ARITHMETIC(file, sign) (\
@@ -197,7 +196,7 @@ void determine_command_type(struct tok *tok) {
 
 void code_writer(struct tok *tok) {
     FILE *ofp = tok->file->ofp;
-    switch(*tok->command) {
+    switch(tok->command) {
         case C_ARITHMETIC:
             char sign = !strcmp(tok->cur, "add") ? '+': '-';
             WRITE_ASM_ARITHMETIC(ofp, sign);
@@ -228,6 +227,7 @@ int read_lines(struct file *file) {
         determine_command_type(new_tok);
         code_writer(new_tok);
     }
+    return 0;
 }
 
 struct file *open_file(char *fname) {
@@ -287,8 +287,6 @@ int free_tok(struct tok *tok, int closef) {
         free(tok->cur);
     if (tok->buf != NULL)
         free(tok->buf);
-    if (tok->command != NULL)
-        free(tok->command);
     free(tok);
     exit(1);
 
