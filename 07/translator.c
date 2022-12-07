@@ -185,13 +185,21 @@ void determine_command_type(struct tok *tok) {
     tok->command = t;
 }
 
+#define CONST_ACCESS %s\nD=A\n
+
+#define SEG_ACCESS "$s\nA=M+%s\n"
+
+#define INCR_STACK "@SP\nM=M+1\n"
+
+#define STACK_MEM "@SP\nA=M\nM=D"
+
 #define WRITE_ASM_ARITHMETIC(file, sign) (\
-            fprintf(file, "@SP\nM=M+1\nA=M\nD=M\n@SP\nM=M-1\nA=M\nM=M%cD\n@SP\nM=M+1\n", sign))
+            fprintf(file, "@SP\nM=M-1\nA=M\nD=M\n@SP\nM=M-1\nA=M\nM=M%cD\n%s", sign, INCR_STACK))
 
 #define WRITE_ASM_PUSH(file, seg, ind) (\
-            fprintf(file, "%s\nA=M+%s\nD=M\n@SP\nA=M\nM=D\n@SP\nM=M+1\n", seg, ind)) 
+            fprintf(file, "%s\nA=M+%s\nD=M\n@SP\nA=M\nM=D\n%s", seg, ind, INCR_STACK)) 
 
-#define WRITE_ASM_POP(seg, ind) (\
+#define WRITE_ASM_POP(file, seg, ind) (\
             fprintf(file,"@SP\nM=M-1\nA=M\nD=M\n%s\nA=M+%s\nM=D\n", seg, ind))
 
 void code_writer(struct tok *tok) {
@@ -207,7 +215,7 @@ void code_writer(struct tok *tok) {
             break;
 
         case C_POP:
-            WRITE_ASM_PUSH(ofp, tok->memseg, tok->ind);
+            WRITE_ASM_POP(ofp, tok->memseg, tok->ind);
             break;
 
         default:
