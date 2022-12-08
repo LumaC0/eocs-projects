@@ -33,13 +33,13 @@ struct tok {
     struct file *file;          // input file
 };
 
-int close_file(struct file *);
+int free_file(struct file *, int);
 
-int free_tok(struct tok *, int);
+int free_tok(struct tok *, int, int);
 
-#define DO_NOT_CLOSE_FILE 0
+#define DO_NOT_FREE_FILE 0
 
-#define CLOSE_FILE 1
+#define FREE_FILE 1
 
 #define MAX_LINE 256
 
@@ -143,11 +143,11 @@ void determine_memseg(struct tok *tok) {
     }
     else {
         fprintf(stderr, "%s is not a valid memory segment\n", tok->cur);
-        free_tok(tok, CLOSE_FILE);
+        free_tok(tok, FREE_FILE, 1);
     }
 }
 
-void determine_command_type(struct tok *tok) {
+int determine_command_type(struct tok *tok) {
     size_t buf_size = strlen(tok->buf)+1;
     char *word = calloc(buf_size + 1, sizeof(char));
     int i;
@@ -182,9 +182,10 @@ void determine_command_type(struct tok *tok) {
     }
     else {
         fprintf(stderr, "token \"%s\" not recognized\n", tok->cur);
-        free_tok(tok, CLOSE_FILE);
+        return -1;
     }
     tok->command = t;
+    return 0;
 }
 
 #define CONST_ACCESS(file, seg) (\
@@ -206,7 +207,7 @@ void determine_command_type(struct tok *tok) {
 #define WRITE_ASM_POP(file, seg, ind) (\
             fprintf(file,"@SP\nM=M-1\nA=M\nD=M\n%s\nA=M+%s\nM=D\n", seg, ind))
 
-void code_writer(struct tok *tok) {
+int code_writer(struct tok *tok) {
     FILE *ofp = tok->file->ofp;
     switch(tok->command) {
         case C_ARITHMETIC:
@@ -227,89 +228,103 @@ void code_writer(struct tok *tok) {
 
         default:
             fprintf(stderr, "%s\n", "Failed to write ASM to file");
-            free_tok(tok, CLOSE_FILE);
-    }
-}
-
-int read_lines(struct file *file) {
-    char line[MAX_LINE];
-    struct tok *new_tok = malloc(sizeof *new_tok);
-    new_tok->file = file;
-    while (fgets(line, MAX_LINE, new_tok->file->fp) != NULL) {
-        if (IS_LINE_COMMENT_OR_EMPTY(line[0]))
-            continue;
-        new_tok->buf = (char *) &line;
-        determine_command_type(new_tok);
-        code_writer(new_tok);
+            return -1;
     }
     return 0;
 }
 
-struct file *open_file(char *fname) {
-    char *fn, *bn, *ofn;
-    FILE *fp, *ofp;
-    struct file *file;
+int read_lines(struct file *file, struct tok *tok) {
+    char line[MAX_LINE];
+    tok->file = file;
+    while (fgets(line, MAX_LINE, tok->file->fp) != NULL) {
+        if (IS_LINE_COMMENT_OR_EMPTY(line[0]))
+            continue;
+        tok->buf = (char *) &line;
 
-    file = malloc(sizeof *file);
-    fn = calloc(strlen(fname)+1, sizeof(char));
-    bn = calloc(strlen(fname)+1, sizeof(char));
-    ofn = calloc(strlen(fname)+1, sizeof(char));
-
-    strcpy(fn, fname);
-    strcpy(bn, fname);
-    bn[strlen(bn)-3] = '\0';
-    file->fn = fn;
-    file->bn = bn;
-
-    if ((fp = fopen(file->fn, "r")) == NULL) {
-        fprintf(stderr, "%s does not exist\n", file->fn);
-        close_file(file);
+        if (determine_command_type(tok) == -1) {
+            return -1;
+        }
+        if (code_writer(tok) == -1) {
+            return -1;
+        };
     }
-    file->fp = fp;
-    strcpy(ofn, file->bn);
-    strcat(ofn, ".asm");
-    file->ofn = ofn;
-    printf("%s\n", file->ofn);
-    ofp = fopen(file->ofn, "w");
-    file->ofp = ofp;
-    return file;
+    return 0;
+}
+
+int open_file(struct file *file, char *fname) {
+    file->fn = strdup(fname);
+    file->bn = strndup(fname, strlen(fname)-3);
+    file->ofn = strdup(file->bn);
+    strcat(file->ofn, ".asm");
+
+    if (file == NULL || file->fn == NULL || file->bn == NULL || file->bn == NULL) {
+        fprintf(stderr, "error allocating space for file name");
+        return -1;
+    }
+    if ((file->fp = fopen(file->fn, "r")) == NULL) {
+        fprintf(stderr, "%s does not exist\n", file->fn);
+        return -1;
+    }
+    if ((file->ofp = fopen(file->ofn, "w")) == NULL) {
+        fprintf(stderr, "could not create %s\n", file->ofn);
+        return -1;
+    };
+    return 0;
 }
 
 
 int main(int argc, char *argv[]) {
-    struct file *file;
     // check that filename matches guidelines
-    if (argc != 2) exit(1);
-    if (fname_check(argv[1]) == -1) exit(1);
-    // build file struct to be passed around
-
-    file = open_file(argv[1]);
-    int result = read_lines(file);
-
-    if (result == -1) {
-        fprintf(stderr, "%s\n", "error in translation");
-        close_file(file);
+    if (argc != 2) {
+        fprintf(stderr, "No file provided\n");
+        exit(1);
     }
-    close_file(file);
+    if (fname_check(argv[1]) == -1) {
+        fprintf(stderr, "input file should start with an upper case character and end in '.vm'\n");
+        exit(1);
+    }
+
+    struct tok *tok = malloc(sizeof *tok);
+    struct file *file = malloc(sizeof *file);
+
+    // build file struct to be passed around
+    if (open_file(file, argv[1]) == -1) {
+        free_file(file, -1);
+        free_tok(tok, DO_NOT_FREE_FILE, 1);
+    }
+    if (read_lines(file, tok) == -1) {
+        free_tok(tok, FREE_FILE, 1);
+    }
+    free_tok(tok, FREE_FILE, 0);
     return 0;
 }
 
-int free_tok(struct tok *tok, int closef) {
-    if (closef == CLOSE_FILE) {
-        close_file(tok->file);
-    }
+int free_tok(struct tok *tok, int ff, int status) {
+    if (ff == FREE_FILE)
+        free_file(tok->file, -1);
     if (tok->cur != NULL)
         free(tok->cur);
-    if (tok->buf != NULL)
-        free(tok->buf);
+    if (tok->memseg != NULL)
+        free(tok->memseg);
+    if (tok->ind != NULL)
+        free(tok->ind);
     free(tok);
-    exit(1);
-
+    exit(status);
 }
-int close_file(struct file *file) {
+
+int free_file(struct file *file, int status) {
+    if (file->fn != NULL)
+       free(file->fn);
+    if (file->bn != NULL)
+       free(file->bn);
+    if (file->ofn != NULL)
+       free(file->ofn);
     if (file->fp != NULL)
-       fclose(file->fp);
-    free(file->fn);
+        fclose(file->fp);
+    if (file->ofp != NULL)
+        fclose(file->ofp);
     free(file);
-    exit(0);
+    if (status == -1)
+        return 0;
+    exit(status);
 }
