@@ -104,42 +104,46 @@ void determine_memseg(struct tok *tok) {
 
     if (strcmp("constant", tok->cur) == 0) {
         determine_memseg_index(tok);
-        char *memseg = calloc(5, sizeof(char));
-        strcpy(memseg, "@");
-        strcat(memseg, tok->ind);
+        tok->memseg = strdup("@");
+        strcat(tok->memseg, tok->ind);
         tok->con = 1;
-        tok->memseg = memseg;
     }
     else if (strcmp("local", tok->cur) == 0) {
-        char *memseg = calloc(5, sizeof(char));
-        strcpy(memseg, "@LCL");
-        tok->memseg = memseg;
+        tok->memseg = strdup("@LCL");
         determine_memseg_index(tok);
-
     }
     else if (strcmp("argument", tok->cur) == 0) {
-        char *memseg = calloc(5, sizeof(char));
-        strcpy(memseg, "@ARG");
-        tok->memseg = memseg;
+        tok->memseg = strdup("@ARG");
         determine_memseg_index(tok);
     }
     else if (strcmp("this", tok->cur) == 0) {
-        char *memseg = calloc(6, sizeof(char));
-        strcpy(memseg, "@THIS");
-        tok->memseg = memseg;
+        tok->memseg = strdup("@THIS");
         determine_memseg_index(tok);
     }
     else if (strcmp("that", tok->cur) == 0) {
-        char *memseg = calloc(6, sizeof(char));
-        strcpy(memseg, "@THAT");
-        tok->memseg = memseg;
+        tok->memseg = strdup("@THAT");
         determine_memseg_index(tok);
     }
     else if (strcmp("static", tok->cur) == 0) {
-        char *memseg = calloc(strlen(tok->file->bn)+2, sizeof(char));
-        strcpy(memseg, strcat("@", tok->file->bn));
-        tok->memseg = memseg;
         determine_memseg_index(tok);
+        char *memseg = strdup("@");
+        strcat(memseg, tok->file->bn);
+        strcat(memseg, ".");
+        strcat(memseg, tok->ind);
+        tok->memseg = memseg;
+    }
+    else if (strcmp("pointer", tok->cur) == 0) {
+        determine_memseg_index(tok);
+        tok->memseg = !(strcmp(tok->ind, "0"))
+            ? strdup("@THIS")
+            : strdup("@THAT");
+    }
+    else if (strcmp("temp", tok->cur) == 0) {
+        determine_memseg_index(tok);
+        tok->memseg = strdup("@");
+        char t = tok->ind[0];
+        tok->ind[0] = 5 + t;
+        strcat(tok->memseg, tok->ind);
     }
     else {
         fprintf(stderr, "%s is not a valid memory segment\n", tok->cur);
@@ -161,7 +165,6 @@ int determine_command_type(struct tok *tok) {
     }
     word[++i] = '\0';
     tok->cur = word;
-    printf("%s\n", tok->cur);
 
     enum command_type t;
     if (strcmp(tok->cur, "push") == 0) {
@@ -190,6 +193,15 @@ int determine_command_type(struct tok *tok) {
     else if (strcmp(tok->cur, "lt") == 0) {
         t = C_ARITHMETIC;
     }
+    else if (strcmp(tok->cur, "and") == 0) {
+        t = C_ARITHMETIC;
+    }
+    else if (strcmp(tok->cur, "or") == 0) {
+        t = C_ARITHMETIC;
+    }
+    else if (strcmp(tok->cur, "not") == 0) {
+        t = C_ARITHMETIC;
+    }
     else {
         fprintf(stderr, "token \"%s\" not recognized\n", tok->cur);
         return -1;
@@ -202,20 +214,30 @@ int determine_command_type(struct tok *tok) {
 #define POP_ONE_OFF_STACK "@SP\nM=M-1\nA=M\nD=M\n"
 // first value in D register, second in M
 #define POP_TWO_OFF_STACK "@SP\nM=M-1\nA=M\nD=M\n@SP\nM=M-1\nA=M\n"
-#define INSERT_INTO_MEM_SEG_SEI "%s\nA=M+%s\nM=D\n"
 // Pushes D register to memory at SP-1
 #define PUSH_ONE_ONTO_STACK "@SP\nA=M\nM=D\n@SP\nM=M+1\n"
 // _SE indicates SEgment var must be inserted
 #define CONST_ACCESS_SE "%s\nD=A\n"
+// pointer to memseg+ind
+#define POINTER_TO_MEM_SEG_ISE "@%s\nD=A\n%s\nD=A+D\n@R0\nM=D\n"
 // _SEI indicates SEgment and Ind cars must be inserted
-#define SEG_ACCESS_SEI "%s\nA=M+%s\nD=M\n"
+#define SEG_ACCESS_ISE "@%s\nD=A\n%s\nA=A+D\nD=M\n"
+// insert into @R0 pointing to memseg+ind
+#define INSERT_INTO_MEM_SEG "@R0\nA=M\nM=D\n"
+// insert const
+#define INSERT_CONST_SE "%s\nM=D\n"
 // first val off the stack is assumed to be in D register
 // second val off the stack is assumed to be in M register 
+// add
 #define OP_ADD "M=M+D\n"
+// subtract
 #define OP_SUB "M=M-D\n"
+// negate
 #define OP_NEG "M=-M\n"
+// increment stack pointer
+#define INCR_STACK_PTR "@SP\nM=M+1\n"
 // D;JEQ evaluations D = 0
-#define OP_EQ "D=D-M\n@TRUE\nD;JEQ"
+#define OP_EQ "D=D-M\n@TRUE\nD;JEQ\n"
 // D;JGT evaluations D < 0
 #define OP_GT "D=D-M\n@TRUE\nD;JGT\n"
 // D;JLT evaluations D < 0
@@ -223,6 +245,15 @@ int determine_command_type(struct tok *tok) {
 // FALSE falls through to D=0
 // TRUE jumps to (TRUE) label and sets D=-1 
 #define BOOL_EVAL "D=0\n@CONT\n0;JMP\n(TRUE)\nD=-1\n(CONT)\n"
+// AND
+#define OP_AND "D=D&M\n"
+// OR
+#define OP_OR "D=D|M\n"
+// NOT
+#define OP_NOT "D=!D\n"
+// infinite loop
+#define ASM_END "(END)\n@END\n0;JMP"
+
 
 int code_writer(struct tok *tok) {
     FILE *ofp = tok->file->ofp;
@@ -231,15 +262,20 @@ int code_writer(struct tok *tok) {
             if (!strcmp(tok->cur, "neg")) {
                 fprintf(ofp, POP_ONE_OFF_STACK);
                 fprintf(ofp, OP_NEG);
+                fprintf(ofp, INCR_STACK_PTR);
                 break;
             }
             else if(!strcmp(tok->cur, "add")) {
                 fprintf(ofp, POP_TWO_OFF_STACK);
                 fprintf(ofp, OP_ADD);
+                fprintf(ofp, INCR_STACK_PTR);
+                break;
             }
             else if(!strcmp(tok->cur, "sub")) {
                 fprintf(ofp, POP_TWO_OFF_STACK);
                 fprintf(ofp, OP_SUB);
+                fprintf(ofp, INCR_STACK_PTR);
+                break;
             }
             else if(!strcmp(tok->cur, "gt")) {
                 fprintf(ofp, POP_TWO_OFF_STACK);
@@ -256,11 +292,22 @@ int code_writer(struct tok *tok) {
                 fprintf(ofp, OP_EQ);
                 fprintf(ofp, BOOL_EVAL);
             }
+            else if(!strcmp(tok->cur, "and")) {
+                fprintf(ofp, POP_TWO_OFF_STACK);
+                fprintf(ofp, OP_AND);
+            }
+            else if(!strcmp(tok->cur, "or")) {
+                fprintf(ofp, POP_TWO_OFF_STACK);
+                fprintf(ofp, OP_OR);
+            }
+            else if(!strcmp(tok->cur, "not")) {
+                fprintf(ofp, POP_ONE_OFF_STACK);
+                fprintf(ofp, OP_NOT);
+            }
             else {
                 fprintf(stderr, "operation %s not recognized\n", tok->cur);
                 return -1;
             }
-
             fprintf(ofp, PUSH_ONE_ONTO_STACK);
             break;
         case C_PUSH:
@@ -269,16 +316,21 @@ int code_writer(struct tok *tok) {
                 fprintf(ofp, PUSH_ONE_ONTO_STACK);
             }
             else {
-                fprintf(ofp, SEG_ACCESS_SEI, tok->memseg, tok->ind);
+                fprintf(ofp, SEG_ACCESS_ISE, tok->ind, tok->memseg);
                 fprintf(ofp, PUSH_ONE_ONTO_STACK);
             }
             break;
-
         case C_POP:
-            fprintf(ofp, POP_ONE_OFF_STACK);
-            fprintf(ofp, INSERT_INTO_MEM_SEG_SEI, tok->memseg, tok->ind);
+            if (tok->con == 1) {
+                fprintf(ofp, POP_ONE_OFF_STACK);
+                fprintf(ofp, INSERT_CONST_SE, tok->memseg);
+            }
+            else {
+                fprintf(ofp, POINTER_TO_MEM_SEG_ISE, tok->ind, tok->memseg);
+                fprintf(ofp, POP_ONE_OFF_STACK);
+                fprintf(ofp, INSERT_INTO_MEM_SEG);
+            }
             break;
-
         default:
             fprintf(stderr, "%s\n", "Failed to write ASM to file");
             return -1;
@@ -301,6 +353,8 @@ int read_lines(struct file *file, struct tok *tok) {
             return -1;
         };
     }
+    // writes infinite loop signaling end of program
+    // fprintf(tok->file->ofp, ASM_END);
     return 0;
 }
 
