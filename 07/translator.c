@@ -161,6 +161,7 @@ int determine_command_type(struct tok *tok) {
     }
     word[++i] = '\0';
     tok->cur = word;
+    printf("%s\n", tok->cur);
 
     enum command_type t;
     if (strcmp(tok->cur, "push") == 0) {
@@ -180,6 +181,15 @@ int determine_command_type(struct tok *tok) {
     else if (strcmp(tok->cur, "neg") == 0) {
         t = C_ARITHMETIC;
     }
+    else if (strcmp(tok->cur, "eq") == 0) {
+        t = C_ARITHMETIC;
+    }
+    else if (strcmp(tok->cur, "gt") == 0) {
+        t = C_ARITHMETIC;
+    }
+    else if (strcmp(tok->cur, "lt") == 0) {
+        t = C_ARITHMETIC;
+    }
     else {
         fprintf(stderr, "token \"%s\" not recognized\n", tok->cur);
         return -1;
@@ -188,42 +198,85 @@ int determine_command_type(struct tok *tok) {
     return 0;
 }
 
-#define CONST_ACCESS(file, seg) (\
-            fprintf(file, "%s\nD=A\n", seg))
-
-#define SEG_ACCESS(file, seg, ind) (\
-            fprintf(file, "%s\nA=M+%s\nD=M\n", seg, ind))
-
-#define INCR_STACK "@SP\nM=M+1\n"
-
-#define STACK_MEM "@SP\nA=M\nM=D"
-
-#define WRITE_ASM_ARITHMETIC(file, sign) (\
-            fprintf(file, "@SP\nM=M-1\nA=M\nD=M\n@SP\nM=M-1\nA=M\nM=M%cD\n%s", sign, INCR_STACK))
-
-#define WRITE_ASM_PUSH(file) (\
-            fprintf(file, "@SP\nA=M\nM=D\n%s", INCR_STACK)) 
-
-#define WRITE_ASM_POP(file, seg, ind) (\
-            fprintf(file,"@SP\nM=M-1\nA=M\nD=M\n%s\nA=M+%s\nM=D\n", seg, ind))
+// value stored in D
+#define POP_ONE_OFF_STACK "@SP\nM=M-1\nA=M\nD=M\n"
+// first value in D register, second in M
+#define POP_TWO_OFF_STACK "@SP\nM=M-1\nA=M\nD=M\n@SP\nM=M-1\nA=M\n"
+#define INSERT_INTO_MEM_SEG_SEI "%s\nA=M+%s\nM=D\n"
+// Pushes D register to memory at SP-1
+#define PUSH_ONE_ONTO_STACK "@SP\nA=M\nM=D\n@SP\nM=M+1\n"
+// _SE indicates SEgment var must be inserted
+#define CONST_ACCESS_SE "%s\nD=A\n"
+// _SEI indicates SEgment and Ind cars must be inserted
+#define SEG_ACCESS_SEI "%s\nA=M+%s\nD=M\n"
+// first val off the stack is assumed to be in D register
+// second val off the stack is assumed to be in M register 
+#define OP_ADD "M=M+D\n"
+#define OP_SUB "M=M-D\n"
+#define OP_NEG "M=-M\n"
+// D;JEQ evaluations D = 0
+#define OP_EQ "D=D-M\n@TRUE\nD;JEQ"
+// D;JGT evaluations D < 0
+#define OP_GT "D=D-M\n@TRUE\nD;JGT\n"
+// D;JLT evaluations D < 0
+#define OP_LT "D=D-M\n@TRUE\nD;JLT\n"
+// FALSE falls through to D=0
+// TRUE jumps to (TRUE) label and sets D=-1 
+#define BOOL_EVAL "D=0\n@CONT\n0;JMP\n(TRUE)\nD=-1\n(CONT)\n"
 
 int code_writer(struct tok *tok) {
     FILE *ofp = tok->file->ofp;
     switch(tok->command) {
         case C_ARITHMETIC:
-            char sign = !strcmp(tok->cur, "add") ? '+': '-';
-            WRITE_ASM_ARITHMETIC(ofp, sign);
-            break;
+            if (!strcmp(tok->cur, "neg")) {
+                fprintf(ofp, POP_ONE_OFF_STACK);
+                fprintf(ofp, OP_NEG);
+                break;
+            }
+            else if(!strcmp(tok->cur, "add")) {
+                fprintf(ofp, POP_TWO_OFF_STACK);
+                fprintf(ofp, OP_ADD);
+            }
+            else if(!strcmp(tok->cur, "sub")) {
+                fprintf(ofp, POP_TWO_OFF_STACK);
+                fprintf(ofp, OP_SUB);
+            }
+            else if(!strcmp(tok->cur, "gt")) {
+                fprintf(ofp, POP_TWO_OFF_STACK);
+                fprintf(ofp, OP_GT);
+                fprintf(ofp, BOOL_EVAL);
+            }
+            else if(!strcmp(tok->cur, "lt")) {
+                fprintf(ofp, POP_TWO_OFF_STACK);
+                fprintf(ofp, OP_LT);
+                fprintf(ofp, BOOL_EVAL);
+            }
+            else if(!strcmp(tok->cur, "eq")) {
+                fprintf(ofp, POP_TWO_OFF_STACK);
+                fprintf(ofp, OP_EQ);
+                fprintf(ofp, BOOL_EVAL);
+            }
+            else {
+                fprintf(stderr, "operation %s not recognized\n", tok->cur);
+                return -1;
+            }
 
+            fprintf(ofp, PUSH_ONE_ONTO_STACK);
+            break;
         case C_PUSH:
-            tok->con == 1
-                ? CONST_ACCESS(ofp, tok->memseg)
-                : SEG_ACCESS(ofp, tok->memseg, tok->ind);
-            WRITE_ASM_PUSH(ofp);
+            if (tok->con == 1) {
+                fprintf(ofp, CONST_ACCESS_SE, tok->memseg);
+                fprintf(ofp, PUSH_ONE_ONTO_STACK);
+            }
+            else {
+                fprintf(ofp, SEG_ACCESS_SEI, tok->memseg, tok->ind);
+                fprintf(ofp, PUSH_ONE_ONTO_STACK);
+            }
             break;
 
         case C_POP:
-            WRITE_ASM_POP(ofp, tok->memseg, tok->ind);
+            fprintf(ofp, POP_ONE_OFF_STACK);
+            fprintf(ofp, INSERT_INTO_MEM_SEG_SEI, tok->memseg, tok->ind);
             break;
 
         default:
