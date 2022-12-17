@@ -137,6 +137,9 @@ void determine_memseg(struct tok *tok) {
         tok->memseg = !(strcmp(tok->ind, "0"))
             ? strdup("@THIS")
             : strdup("@THAT");
+        free(tok->ind);
+        // pointer to 0 index of memsegs this and that
+        tok->ind = strdup("0");
     }
     else if (strcmp("temp", tok->cur) == 0) {
         determine_memseg_index(tok);
@@ -219,11 +222,11 @@ int determine_command_type(struct tok *tok) {
 // _SE indicates SEgment var must be inserted
 #define CONST_ACCESS_SE "%s\nD=A\n"
 // pointer to memseg+ind
-#define POINTER_TO_MEM_SEG_ISE "@%s\nD=A\n%s\nD=A+D\n@R0\nM=D\n"
+#define POINTER_TO_MEM_SEG_ISE "@%s\nD=A\n%s\nD=A+D\n@PTR\nM=D\n"
 // _SEI indicates SEgment and Ind cars must be inserted
 #define SEG_ACCESS_ISE "@%s\nD=A\n%s\nA=A+D\nD=M\n"
 // insert into @R0 pointing to memseg+ind
-#define INSERT_INTO_MEM_SEG "@R0\nA=M\nM=D\n"
+#define INSERT_INTO_MEM_SEG "@PTR\nA=M\nM=D\n"
 // insert const
 #define INSERT_CONST_SE "%s\nM=D\n"
 // first val off the stack is assumed to be in D register
@@ -236,15 +239,15 @@ int determine_command_type(struct tok *tok) {
 #define OP_NEG "M=-M\n"
 // increment stack pointer
 #define INCR_STACK_PTR "@SP\nM=M+1\n"
-// D;JEQ evaluations D = 0
-#define OP_EQ "D=D-M\n@TRUE\nD;JEQ\n"
-// D;JGT evaluations D < 0
-#define OP_GT "D=D-M\n@TRUE\nD;JGT\n"
-// D;JLT evaluations D < 0
-#define OP_LT "D=D-M\n@TRUE\nD;JLT\n"
+// T<n> jumps to the local True label
+#define OP_EQ_I "D=D-M\n@T%i\nD;JEQ\n"
+// M (pop2) > D (pop1)
+#define OP_GT_I "D=M-D\n@T%i\nD;JGT\n"
+// M (pop2) < D (pop1)
+#define OP_LT_I "D=M-D\n@T%i\nD;JLT\n"
 // FALSE falls through to D=0
-// TRUE jumps to (TRUE) label and sets D=-1 
-#define BOOL_EVAL "D=0\n@CONT\n0;JMP\n(TRUE)\nD=-1\n(CONT)\n"
+// and jumps to th local push label
+#define BOOL_EVAL_III "D=0\n@P%i\n0;JMP\n(T%i)\nD=-1\n(P%i)\n"
 // AND
 #define OP_AND "D=D&M\n"
 // OR
@@ -257,50 +260,60 @@ int determine_command_type(struct tok *tok) {
 
 int code_writer(struct tok *tok) {
     FILE *ofp = tok->file->ofp;
+    static int local = 0;
     switch(tok->command) {
         case C_ARITHMETIC:
             if (!strcmp(tok->cur, "neg")) {
+                fprintf(ofp, "// neg\n");
                 fprintf(ofp, POP_ONE_OFF_STACK);
                 fprintf(ofp, OP_NEG);
                 fprintf(ofp, INCR_STACK_PTR);
                 break;
             }
             else if(!strcmp(tok->cur, "add")) {
+                fprintf(ofp, "// add\n");
                 fprintf(ofp, POP_TWO_OFF_STACK);
                 fprintf(ofp, OP_ADD);
                 fprintf(ofp, INCR_STACK_PTR);
                 break;
             }
             else if(!strcmp(tok->cur, "sub")) {
+                fprintf(ofp, "// sub\n");
                 fprintf(ofp, POP_TWO_OFF_STACK);
                 fprintf(ofp, OP_SUB);
                 fprintf(ofp, INCR_STACK_PTR);
                 break;
             }
             else if(!strcmp(tok->cur, "gt")) {
+                fprintf(ofp, "// gt\n");
                 fprintf(ofp, POP_TWO_OFF_STACK);
-                fprintf(ofp, OP_GT);
-                fprintf(ofp, BOOL_EVAL);
+                fprintf(ofp, OP_GT_I, local);
+                fprintf(ofp, BOOL_EVAL_III, local, local, local);
             }
             else if(!strcmp(tok->cur, "lt")) {
+                fprintf(ofp, "// lt\n");
                 fprintf(ofp, POP_TWO_OFF_STACK);
-                fprintf(ofp, OP_LT);
-                fprintf(ofp, BOOL_EVAL);
+                fprintf(ofp, OP_LT_I, local);
+                fprintf(ofp, BOOL_EVAL_III, local, local, local);
             }
             else if(!strcmp(tok->cur, "eq")) {
+                fprintf(ofp, "// eq\n");
                 fprintf(ofp, POP_TWO_OFF_STACK);
-                fprintf(ofp, OP_EQ);
-                fprintf(ofp, BOOL_EVAL);
+                fprintf(ofp, OP_EQ_I, local);
+                fprintf(ofp, BOOL_EVAL_III, local, local, local);
             }
             else if(!strcmp(tok->cur, "and")) {
+                fprintf(ofp, "// and\n");
                 fprintf(ofp, POP_TWO_OFF_STACK);
                 fprintf(ofp, OP_AND);
             }
             else if(!strcmp(tok->cur, "or")) {
+                fprintf(ofp, "// or\n");
                 fprintf(ofp, POP_TWO_OFF_STACK);
                 fprintf(ofp, OP_OR);
             }
             else if(!strcmp(tok->cur, "not")) {
+                fprintf(ofp, "// not\n");
                 fprintf(ofp, POP_ONE_OFF_STACK);
                 fprintf(ofp, OP_NOT);
             }
@@ -308,24 +321,29 @@ int code_writer(struct tok *tok) {
                 fprintf(stderr, "operation %s not recognized\n", tok->cur);
                 return -1;
             }
+            fprintf(ofp, "// push result onto stack\n");
             fprintf(ofp, PUSH_ONE_ONTO_STACK);
             break;
         case C_PUSH:
             if (tok->con == 1) {
+                fprintf(ofp, "// push constant %s\n", tok->ind);
                 fprintf(ofp, CONST_ACCESS_SE, tok->memseg);
                 fprintf(ofp, PUSH_ONE_ONTO_STACK);
             }
             else {
+                fprintf(ofp, "// push %s %s\n", tok->memseg, tok->ind);
                 fprintf(ofp, SEG_ACCESS_ISE, tok->ind, tok->memseg);
                 fprintf(ofp, PUSH_ONE_ONTO_STACK);
             }
             break;
         case C_POP:
             if (tok->con == 1) {
+                fprintf(ofp, "// pop constant %s\n", tok->ind);
                 fprintf(ofp, POP_ONE_OFF_STACK);
                 fprintf(ofp, INSERT_CONST_SE, tok->memseg);
             }
             else {
+                fprintf(ofp, "// pop %s %s\n", tok->memseg, tok->ind);
                 fprintf(ofp, POINTER_TO_MEM_SEG_ISE, tok->ind, tok->memseg);
                 fprintf(ofp, POP_ONE_OFF_STACK);
                 fprintf(ofp, INSERT_INTO_MEM_SEG);
@@ -335,6 +353,7 @@ int code_writer(struct tok *tok) {
             fprintf(stderr, "%s\n", "Failed to write ASM to file");
             return -1;
     }
+    local++;
     return 0;
 }
 
@@ -358,9 +377,25 @@ int read_lines(struct file *file, struct tok *tok) {
     return 0;
 }
 
+
+char *get_base_name(char *fname) {
+    char *p;
+    char *n = strdup(fname);
+    if ((p = strtok(n, "/\\")) != NULL) {
+        do {
+            if (p[strlen(p)+1] == '\0')
+                break;
+        } while ((p = strtok(NULL, "/\\")) != NULL);
+    }
+    p[strlen(p)-3] = '\0';
+    free(n);
+    return p;
+}
+
+
 int open_file(struct file *file, char *fname) {
     file->fn = strdup(fname);
-    file->bn = strndup(fname, strlen(fname)-3);
+    file->bn = strdup(get_base_name(fname));
     file->ofn = strdup(file->bn);
     strcat(file->ofn, ".asm");
 
