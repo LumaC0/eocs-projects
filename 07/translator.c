@@ -78,7 +78,7 @@ void determine_memseg_index(struct tok *tok) {
     }
     free(tok->cur);
     tok->cur = word;
-    tok->ind = word;
+    tok->ind = strdup(word);
 }
 
 void determine_memseg(struct tok *tok) {
@@ -144,9 +144,10 @@ void determine_memseg(struct tok *tok) {
     else if (strcmp("temp", tok->cur) == 0) {
         determine_memseg_index(tok);
         tok->memseg = strdup("@");
-        char t = tok->ind[0];
-        tok->ind[0] = 5 + t;
-        strcat(tok->memseg, tok->ind);
+        short t = (tok->ind[0] + 5) - 48;
+        char offset[5];
+        sprintf(offset, "%d", t);
+        strcat(tok->memseg, offset);
     }
     else {
         fprintf(stderr, "%s is not a valid memory segment\n", tok->cur);
@@ -371,6 +372,9 @@ int read_lines(struct file *file, struct tok *tok) {
         if (code_writer(tok) == -1) {
             return -1;
         };
+        // reset constant indicator
+        // TODO: free malloced values between loops
+        tok->con = 0;
     }
     // writes infinite loop signaling end of program
     // fprintf(tok->file->ofp, ASM_END);
@@ -379,24 +383,18 @@ int read_lines(struct file *file, struct tok *tok) {
 
 
 char *get_base_name(char *fname) {
-    char *p;
-    char *n = strdup(fname);
-    if ((p = strtok(n, "/\\")) != NULL) {
-        do {
-            if (p[strlen(p)+1] == '\0')
-                break;
-        } while ((p = strtok(NULL, "/\\")) != NULL);
-    }
-    p[strlen(p)-3] = '\0';
-    free(n);
-    return p;
+    char *n;
+    if ((n = strrchr(fname, '/')) != NULL)
+        fname = n+1;
+    return fname;
 }
 
 
 int open_file(struct file *file, char *fname) {
     file->fn = strdup(fname);
     file->bn = strdup(get_base_name(fname));
-    file->ofn = strdup(file->bn);
+    file->ofn = strdup(file->fn);
+    file->ofn[strlen(file->ofn)-3] = '\0';
     strcat(file->ofn, ".asm");
 
     if (file == NULL || file->fn == NULL || file->bn == NULL || file->bn == NULL) {
